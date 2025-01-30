@@ -8,12 +8,15 @@ import { LightProbeGenerator } from 'three/examples/jsm/Addons.js';
 import { OrbitControls } from 'three/examples/jsm/Addons.js';
 
 
+import cnoise from './lib/noise/cnoise.glsl?raw';
+
+
 const cnvs = document.getElementById('c') as HTMLCanvasElement;
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(75, cnvs.clientWidth / cnvs.clientHeight, 0.001, 100);
 
 
-cam.position.set(0, 0, 5);
+cam.position.set(0, 0, 10);
 scene.background = new THREE.Color(0x000000);
 
 
@@ -64,13 +67,95 @@ async function loadTextures() {
 loadTextures();
 
 
-let box: THREE.Object3D;
-const boxGeo = new THREE.BoxGeometry();
-const boxMat = new THREE.MeshPhysicalMaterial();
-boxMat.metalness = 2.0;
-boxMat.roughness = 0.0;
-box = new THREE.Mesh(boxGeo, boxMat);
-scene.add(box);
+let mesh: THREE.Object3D;
+
+const sphereGeo = new THREE.SphereGeometry(4, 182, 182);
+const phyMat = new THREE.MeshPhysicalMaterial();
+phyMat.color = new THREE.Color(0x001100);
+phyMat.metalness = 0.8;
+phyMat.roughness = 0.0;
+phyMat.side = THREE.DoubleSide;
+
+
+const dissolveUniformData = {
+    uEdgeColor: {
+        value: new THREE.Color(),
+    },
+    uFreq: {
+        value: 0.45,
+    },
+    uAmp: {
+        value: 16.0
+    },
+    uProgress: {
+        value: -7.0
+    },
+    uEdge: {
+        value: 0.8
+    }
+}
+
+
+function setupUniforms(shader: THREE.WebGLProgramParametersWithUniforms, uniforms: { [uniform: string]: THREE.IUniform<any> }) {
+    const keys = Object.keys(uniforms);
+    for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        shader.uniforms[key] = uniforms[key];
+    }
+}
+
+function setupDissolveShader(shader: THREE.WebGLProgramParametersWithUniforms) {
+    // vertex shader snippet outside main
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>
+        varying vec3 vPos;
+    `);
+
+    // vertex shader snippet inside main
+    shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vPos = position;
+    `);
+
+    // fragment shader snippet outside main
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+        varying vec3 vPos;
+
+        uniform float uFreq;
+        uniform float uAmp;
+        uniform float uProgress;
+        uniform float uEdge;
+        uniform vec3 uEdgeColor;
+
+        ${cnoise}
+    `);
+
+    // fragment shader snippet inside main
+    shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>
+
+        float noise = cnoise(vPos * uFreq) * uAmp; // calculate cnoise in fragment shader for smooth dissolve edges
+
+        if(noise < uProgress) discard; // discard any fragment where noise is lower than progress
+
+        float edgeWidth = uProgress + uEdge;
+
+        if(noise > uProgress && noise < edgeWidth){
+            gl_FragColor = vec4(vec3(uEdgeColor),noise); // colors the edge
+        }
+
+        gl_FragColor = vec4(gl_FragColor.xyz,1.0);
+    `);
+
+}
+
+
+phyMat.onBeforeCompile = (shader) => {
+    setupUniforms(shader, dissolveUniformData);
+    setupDissolveShader(shader);
+}
+
+
+mesh = new THREE.Mesh(sphereGeo, phyMat);
+scene.add(mesh);
+
 
 function resizeRendererToDisplaySize() {
     const width = cnvs.clientWidth;
@@ -82,14 +167,34 @@ function resizeRendererToDisplaySize() {
     return needResize;
 }
 
+
 let tweaks = {
     x: 0,
     z: 0,
+
+    dissolveProgress: dissolveUniformData.uProgress.value,
+    edgeWidth: dissolveUniformData.uEdge.value,
+    amplitude: dissolveUniformData.uAmp.value,
+    frequency: dissolveUniformData.uFreq.value,
+    meshVisible: true,
+    meshColor: "#" + phyMat.color.getHexString(),
+    edgeColor: "#" + dissolveUniformData.uEdgeColor.value.getHexString(),
 };
 
+
 const pane = new Pane();
-pane.addBinding(tweaks, "x", { min: -10, max: 10, step: 0.01 }).on('change', (obj) => { box.position.x = obj.value; });
-pane.addBinding(tweaks, "z", { min: -10, max: 10, step: 0.01 }).on('change', (obj) => { box.position.z = obj.value; });
+pane.addBinding(tweaks, "x", { min: -10, max: 10, step: 0.01 }).on('change', (obj) => { mesh.position.x = obj.value; });
+pane.addBinding(tweaks, "z", { min: -10, max: 10, step: 0.01 }).on('change', (obj) => { mesh.position.z = obj.value; });
+
+
+const dissolveFolder = pane.addFolder({ title: "Dissolve Effect" });
+dissolveFolder.addBinding(tweaks, "meshVisible", { label: "Visible" }).on('change', (obj) => { mesh.visible = obj.value; });
+dissolveFolder.addBinding(tweaks, "dissolveProgress", { min: -20, max: 20, step: 0.001, label: "Progress" }).on('change', (obj) => { dissolveUniformData.uProgress.value = obj.value; });
+dissolveFolder.addBinding(tweaks, "edgeWidth", { min: 0.1, max: 8, step: 0.001, label: "Edge Width" }).on('change', (obj) => { dissolveUniformData.uEdge.value = obj.value });
+dissolveFolder.addBinding(tweaks, "frequency", { min: 0.1, max: 8, step: 0.001, label: "Frequency" }).on('change', (obj) => { dissolveUniformData.uFreq.value = obj.value });
+dissolveFolder.addBinding(tweaks, "amplitude", { min: 0.1, max: 20, step: 0.001, label: "Amplitude" }).on('change', (obj) => { dissolveUniformData.uAmp.value = obj.value });
+dissolveFolder.addBinding(tweaks, "meshColor", { label: "Mesh Color" }).on('change', (obj) => { phyMat.color.set(obj.value) });
+dissolveFolder.addBinding(tweaks, "edgeColor", { label: "Edge Color" }).on('change', (obj) => { dissolveUniformData.uEdgeColor.value.set(obj.value); });
 
 
 function animate() {
@@ -101,14 +206,6 @@ function animate() {
         cam.aspect = canvas.clientWidth / canvas.clientHeight;
         cam.updateProjectionMatrix();
     }
-
-
-
-    if (box) {
-        box.rotation.x += 0.01;
-        box.rotation.y += 0.01;
-    }
-
 
 
     re.render(scene, cam);
