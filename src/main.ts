@@ -68,8 +68,9 @@ loadTextures();
 
 
 let mesh: THREE.Object3D;
+let meshGeo: THREE.BufferGeometry;
 
-const sphereGeo = new THREE.SphereGeometry(4, 182, 182);
+meshGeo = new THREE.SphereGeometry(4, 182, 182);
 const phyMat = new THREE.MeshPhysicalMaterial();
 phyMat.color = new THREE.Color(0x001100);
 phyMat.metalness = 0.8;
@@ -153,8 +154,51 @@ phyMat.onBeforeCompile = (shader) => {
 }
 
 
-mesh = new THREE.Mesh(sphereGeo, phyMat);
+mesh = new THREE.Mesh(meshGeo, phyMat);
 scene.add(mesh);
+
+
+let particleMesh: THREE.Points;
+let particleMat = new THREE.ShaderMaterial();
+
+
+const particlesUniformData = {
+    uBaseSize: {
+        value: 10.0,
+    },
+    uColor: {
+        value: new THREE.Color(0x0008ff),
+    }
+}
+
+particleMat.uniforms = particlesUniformData;
+
+particleMat.vertexShader = `
+uniform float uBaseSize;
+
+void main() {
+    vec3 pos = position;
+
+    vec4 modelPosition = modelMatrix * vec4(pos, 1.0);
+    vec4 viewPosition = viewMatrix * modelPosition;
+    vec4 projectedPosition = projectionMatrix * viewPosition;
+    gl_Position = projectedPosition;
+
+    gl_PointSize = uBaseSize / -viewPosition.z;
+}
+`;
+
+particleMat.fragmentShader = `
+uniform vec3 uColor;
+
+void main(){
+    gl_FragColor = vec4(uColor,1.0);
+}
+`;
+
+
+particleMesh = new THREE.Points(meshGeo, particleMat);
+scene.add(particleMesh);
 
 
 function resizeRendererToDisplaySize() {
@@ -179,6 +223,10 @@ let tweaks = {
     meshVisible: true,
     meshColor: "#" + phyMat.color.getHexString(),
     edgeColor: "#" + dissolveUniformData.uEdgeColor.value.getHexString(),
+
+    particleVisible: true,
+    particleBaseSize: particlesUniformData.uBaseSize.value,
+    particleColor: "#" + particlesUniformData.uColor.value.getHexString(),
 };
 
 
@@ -195,6 +243,12 @@ dissolveFolder.addBinding(tweaks, "frequency", { min: 0.1, max: 8, step: 0.001, 
 dissolveFolder.addBinding(tweaks, "amplitude", { min: 0.1, max: 20, step: 0.001, label: "Amplitude" }).on('change', (obj) => { dissolveUniformData.uAmp.value = obj.value });
 dissolveFolder.addBinding(tweaks, "meshColor", { label: "Mesh Color" }).on('change', (obj) => { phyMat.color.set(obj.value) });
 dissolveFolder.addBinding(tweaks, "edgeColor", { label: "Edge Color" }).on('change', (obj) => { dissolveUniformData.uEdgeColor.value.set(obj.value); });
+
+
+const particleFolder = pane.addFolder({ title: "Particle" });
+particleFolder.addBinding(tweaks, "particleVisible", { label: "Visible" }).on('change', (obj) => { particleMesh.visible = obj.value; });
+particleFolder.addBinding(tweaks, "particleBaseSize", { min: 10.0, max: 100, step: 0.01, label: "Base size" }).on('change', (obj) => { particlesUniformData.uBaseSize.value = obj.value; });
+particleFolder.addBinding(tweaks, "particleColor", { label: "Color" }).on('change', (obj) => { particlesUniformData.uColor.value.set(obj.value); });
 
 
 function animate() {
