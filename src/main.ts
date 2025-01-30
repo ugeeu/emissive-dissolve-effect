@@ -4,6 +4,10 @@ import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { Pane } from 'tweakpane';
 
 
+import { LightProbeGenerator } from 'three/examples/jsm/Addons.js';
+import { OrbitControls } from 'three/examples/jsm/Addons.js';
+
+
 const cnvs = document.getElementById('c') as HTMLCanvasElement;
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(75, cnvs.clientWidth / cnvs.clientHeight, 0.001, 100);
@@ -18,12 +22,53 @@ re.setPixelRatio(window.devicePixelRatio);
 re.setSize(cnvs.clientWidth, cnvs.clientHeight, false);
 
 const stat = new Stats();
+const orbCtrls = new OrbitControls(cam, cnvs);
 document.body.appendChild(stat.dom);
+
+
+const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256);
+const cubeCamera = new THREE.CubeCamera(0.1, 500, cubeRenderTarget);
+let lightProbe = new THREE.LightProbe();
+let cubeTextureUrls: string[];
+let cubeTexture: THREE.CubeTexture;
+
+
+function generateCubeUrls(prefix: string, postfix: string) {
+    return [
+        prefix + 'posx' + postfix, prefix + 'negx' + postfix,
+        prefix + 'posy' + postfix, prefix + 'negy' + postfix,
+        prefix + 'posz' + postfix, prefix + 'negz' + postfix
+    ];
+}
+
+
+cubeTextureUrls = generateCubeUrls('/cubeMap/', '.png');
+
+
+async function loadTextures() {
+
+    const cubeTextureLoader = new THREE.CubeTextureLoader();
+    cubeTexture = await cubeTextureLoader.loadAsync(cubeTextureUrls);
+
+    scene.background = cubeTexture;
+    scene.environment = cubeTexture;
+
+    cubeCamera.update(re, scene);
+
+    lightProbe = await LightProbeGenerator.fromCubeRenderTarget(re, cubeRenderTarget);
+    scene.add(lightProbe);
+
+}
+
+
+loadTextures();
 
 
 let box: THREE.Object3D;
 const boxGeo = new THREE.BoxGeometry();
-const boxMat = new THREE.MeshNormalMaterial();
+const boxMat = new THREE.MeshPhysicalMaterial();
+boxMat.metalness = 2.0;
+boxMat.roughness = 0.0;
 box = new THREE.Mesh(boxGeo, boxMat);
 scene.add(box);
 
@@ -49,6 +94,7 @@ pane.addBinding(tweaks, "z", { min: -10, max: 10, step: 0.01 }).on('change', (ob
 
 function animate() {
     stat.update();
+    orbCtrls.update();
 
     if (resizeRendererToDisplaySize()) {
         const canvas = re.domElement;
