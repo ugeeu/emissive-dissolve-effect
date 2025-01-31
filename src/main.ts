@@ -11,18 +11,73 @@ import { OrbitControls } from 'three/examples/jsm/Addons.js';
 import cnoise from './lib/noise/cnoise.glsl?raw';
 
 
+import { EffectComposer, RenderPass, OutputPass, UnrealBloomPass, ShaderPass } from 'three/examples/jsm/Addons.js';
+import { TeapotGeometry } from 'three/examples/jsm/Addons.js';
+
+
 const cnvs = document.getElementById('c') as HTMLCanvasElement;
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(75, cnvs.clientWidth / cnvs.clientHeight, 0.001, 100);
 
 
-cam.position.set(0, 0, 10);
-scene.background = new THREE.Color(0x000000);
+cam.position.set(-0.8, 4.2, 9.6);
+const blackColor = new THREE.Color(0x000000);
+scene.background = blackColor;
 
 
 const re = new THREE.WebGLRenderer({ canvas: cnvs, antialias: true });
 re.setPixelRatio(window.devicePixelRatio);
 re.setSize(cnvs.clientWidth, cnvs.clientHeight, false);
+re.toneMapping = THREE.CineonToneMapping;
+re.outputColorSpace = THREE.SRGBColorSpace;
+
+
+const effectComposer1 = new EffectComposer(re);
+const renderPass = new RenderPass(scene, cam);
+const unrealBloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerHeight, window.innerWidth), 0.5, 0.4, 0.2);
+const outPass = new OutputPass();
+
+const effectComposer2 = new EffectComposer(re);
+const shaderPass = new ShaderPass(new THREE.ShaderMaterial({
+    uniforms: {
+        tDiffuse: { value: null },
+        uBloomTexture: {
+            value: effectComposer1.renderTarget2.texture
+        },
+        uStrength: {
+            value: 8.00,
+        },
+    },
+
+    vertexShader: `
+        varying vec2 vUv;
+        void main(){
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+        }
+    `,
+
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform sampler2D uBloomTexture;
+        uniform float uStrength;
+        varying vec2 vUv;
+        void main(){
+            vec4 baseEffect = texture2D(tDiffuse,vUv);
+            vec4 bloomEffect = texture2D(uBloomTexture,vUv);
+            gl_FragColor =baseEffect + bloomEffect * uStrength;
+        }
+    `,
+}));
+
+effectComposer1.addPass(renderPass);
+effectComposer1.addPass(unrealBloomPass);
+effectComposer1.renderToScreen = false;
+
+effectComposer2.addPass(renderPass);
+effectComposer2.addPass(shaderPass);
+effectComposer2.addPass(outPass);
+
 
 const stat = new Stats();
 const orbCtrls = new OrbitControls(cam, cnvs);
@@ -75,16 +130,17 @@ let mesh: THREE.Object3D;
 let meshGeo: THREE.BufferGeometry;
 
 meshGeo = new THREE.SphereGeometry(4, 182, 182);
+meshGeo = new TeapotGeometry(2, 32);
 const phyMat = new THREE.MeshPhysicalMaterial();
-phyMat.color = new THREE.Color(0x001100);
-phyMat.metalness = 0.8;
+phyMat.color = new THREE.Color(0x636363);
+phyMat.metalness = 2.0;
 phyMat.roughness = 0.0;
 phyMat.side = THREE.DoubleSide;
 
 
 const dissolveUniformData = {
     uEdgeColor: {
-        value: new THREE.Color(),
+        value: new THREE.Color(0x4d9bff),
     },
     uFreq: {
         value: 0.45,
@@ -175,7 +231,7 @@ let particleDistArr: Float32Array;
 let particleRotationArr: Float32Array;
 let particleData = {
     particleSpeedFactor: 0.02, // for tweaking velocity 
-    velocityFactor: { x: 1, y: 1 },
+    velocityFactor: { x: 2.5, y: 1 },
     waveAmplitude: 0,
 }
 
@@ -194,7 +250,7 @@ function initParticleAttributes() {
         let y = i * 3 + 1;
         let z = i * 3 + 2;
 
-        particleMaxOffsetArr[i] = Math.random() * 3.5 + 0.5;
+        particleMaxOffsetArr[i] = Math.random() * 5.5 + 1.5;
 
         particleVelocityArr[x] = Math.random() * 0.5 + 0.5;
         particleVelocityArr[y] = Math.random() * 0.5 + 0.5;
@@ -311,10 +367,10 @@ const particlesUniformData = {
     uAmp: dissolveUniformData.uAmp,
     uFreq: dissolveUniformData.uFreq,
     uBaseSize: {
-        value: 42.0,
+        value: 64.0,
     },
     uColor: {
-        value: new THREE.Color(0xd1d1d1),
+        value: new THREE.Color(0x4d9bff),
     }
 }
 
@@ -399,7 +455,15 @@ function resizeRendererToDisplaySize() {
     const needResize = cnvs.width !== width || cnvs.height !== height;
     if (needResize) {
         re.setSize(width, height, false);
+
+        renderPass.setSize(width, height);
+        outPass.setSize(width, height);
+        unrealBloomPass.setSize(width, height);
+
+        effectComposer1.setSize(width, height);
+        effectComposer2.setSize(width, height);
     }
+
     return needResize;
 }
 
@@ -432,7 +496,7 @@ pane.addBinding(tweaks, "z", { min: -10, max: 10, step: 0.01 }).on('change', (ob
 
 const dissolveFolder = pane.addFolder({ title: "Dissolve Effect" });
 dissolveFolder.addBinding(tweaks, "meshVisible", { label: "Visible" }).on('change', (obj) => { mesh.visible = obj.value; });
-dissolveFolder.addBinding(tweaks, "dissolveProgress", { min: -20, max: 20, step: 0.001, label: "Progress" }).on('change', (obj) => { dissolveUniformData.uProgress.value = obj.value; });
+dissolveFolder.addBinding(tweaks, "dissolveProgress", { min: -20, max: 20, step: 0.0001, label: "Progress" }).on('change', (obj) => { dissolveUniformData.uProgress.value = obj.value; });
 dissolveFolder.addBinding(tweaks, "edgeWidth", { min: 0.1, max: 8, step: 0.001, label: "Edge Width" }).on('change', (obj) => { dissolveUniformData.uEdge.value = obj.value });
 dissolveFolder.addBinding(tweaks, "frequency", { min: 0.1, max: 8, step: 0.001, label: "Frequency" }).on('change', (obj) => { dissolveUniformData.uFreq.value = obj.value });
 dissolveFolder.addBinding(tweaks, "amplitude", { min: 0.1, max: 20, step: 0.001, label: "Amplitude" }).on('change', (obj) => { dissolveUniformData.uAmp.value = obj.value });
@@ -464,7 +528,11 @@ function animate() {
     }
 
 
-    re.render(scene, cam);
+    scene.background = blackColor;
+    effectComposer1.render();
+
+    scene.background = cubeTexture;
+    effectComposer2.render();
     requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
