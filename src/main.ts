@@ -163,8 +163,15 @@ let particleMat = new THREE.ShaderMaterial();
 
 
 const particlesUniformData = {
+    uPixelDensity: {
+        value: re.getPixelRatio()
+    },
+    uProgress: dissolveUniformData.uProgress,
+    uEdge: dissolveUniformData.uEdge,
+    uAmp: dissolveUniformData.uAmp,
+    uFreq: dissolveUniformData.uFreq,
     uBaseSize: {
-        value: 10.0,
+        value: 42.0,
     },
     uColor: {
         value: new THREE.Color(0x0008ff),
@@ -174,24 +181,44 @@ const particlesUniformData = {
 particleMat.uniforms = particlesUniformData;
 
 particleMat.vertexShader = `
+
+${cnoise}
+
+uniform float uPixelDensity;
 uniform float uBaseSize;
+uniform float uFreq;
+uniform float uAmp;
+uniform float uEdge;
+uniform float uProgress;
+
+varying float vNoise;
 
 void main() {
     vec3 pos = position;
+
+    float noise = cnoise(pos * uFreq) * uAmp;
+    vNoise =noise;
 
     vec4 modelPosition = modelMatrix * vec4(pos, 1.0);
     vec4 viewPosition = viewMatrix * modelPosition;
     vec4 projectedPosition = projectionMatrix * viewPosition;
     gl_Position = projectedPosition;
 
-    gl_PointSize = uBaseSize / -viewPosition.z;
+    gl_PointSize = (uBaseSize * uPixelDensity) / -viewPosition.z;
 }
 `;
 
 particleMat.fragmentShader = `
 uniform vec3 uColor;
+uniform float uEdge;
+uniform float uProgress;
+
+varying float vNoise;
 
 void main(){
+    if( vNoise < uProgress ) discard;
+    if( vNoise > uProgress + uEdge) discard;
+
     gl_FragColor = vec4(uColor,1.0);
 }
 `;
