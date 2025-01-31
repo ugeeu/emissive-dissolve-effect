@@ -161,6 +161,66 @@ scene.add(mesh);
 let particleMesh: THREE.Points;
 let particleMat = new THREE.ShaderMaterial();
 
+let particleCount = meshGeo.attributes.position.count;
+let particleMaxOffsetArr: Float32Array; // -- how far a particle can go from its initial position 
+let particleInitPosArr: Float32Array; // store the initial position of the particles -- particle position will reset here if it exceed maxoffset
+let particleCurrPosArr: Float32Array; // use to update he position of the particle 
+let particleVelocityArr: Float32Array; // velocity of each particle
+
+let particleSpeedFactor = 0.02; // for tweaking velocity 
+
+function initParticleAttributes() {
+    particleMaxOffsetArr = new Float32Array(particleCount);
+    particleInitPosArr = new Float32Array(meshGeo.getAttribute('position').array);
+    particleCurrPosArr = new Float32Array(meshGeo.getAttribute('position').array);
+    particleVelocityArr = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount; i++) {
+        let x = i * 3 + 0;
+        let y = i * 3 + 1;
+        let z = i * 3 + 2;
+
+        particleMaxOffsetArr[i] = Math.random() * 1.5 + 0.2;
+
+        particleVelocityArr[x] = 0;
+        particleVelocityArr[y] = Math.random() + 0.01;
+        particleVelocityArr[z] = 0;
+    }
+
+    meshGeo.setAttribute('aOffset', new THREE.BufferAttribute(particleMaxOffsetArr, 1));
+    meshGeo.setAttribute('aCurrentPos', new THREE.BufferAttribute(particleCurrPosArr, 3));
+    meshGeo.setAttribute('aVelocity', new THREE.BufferAttribute(particleVelocityArr, 3));
+}
+
+function updateParticleAttriutes() {
+    for (let i = 0; i < particleCount; i++) {
+        let x = i * 3 + 0;
+        let y = i * 3 + 1;
+        let z = i * 3 + 2;
+
+        particleCurrPosArr[x] += particleVelocityArr[x] * particleSpeedFactor;
+        particleCurrPosArr[y] += particleVelocityArr[y] * particleSpeedFactor;
+        particleCurrPosArr[z] += particleVelocityArr[z] * particleSpeedFactor;
+
+        const vec1 = new THREE.Vector3(particleInitPosArr[x], particleInitPosArr[y], particleInitPosArr[z]);
+        const vec2 = new THREE.Vector3(particleCurrPosArr[x], particleCurrPosArr[y], particleCurrPosArr[z]);
+        const dist = vec1.distanceTo(vec2);
+
+        if (dist > particleMaxOffsetArr[i]) {
+            particleCurrPosArr[x] = particleInitPosArr[x];
+            particleCurrPosArr[y] = particleInitPosArr[y];
+            particleCurrPosArr[z] = particleInitPosArr[z];
+        }
+
+    }
+
+    meshGeo.setAttribute('aOffset', new THREE.BufferAttribute(particleMaxOffsetArr, 1));
+    meshGeo.setAttribute('aCurrentPos', new THREE.BufferAttribute(particleCurrPosArr, 3));
+    meshGeo.setAttribute('aVelocity', new THREE.BufferAttribute(particleVelocityArr, 3));
+}
+
+initParticleAttributes();
+
 
 const particlesUniformData = {
     uPixelDensity: {
@@ -174,7 +234,7 @@ const particlesUniformData = {
         value: 42.0,
     },
     uColor: {
-        value: new THREE.Color(0x0008ff),
+        value: new THREE.Color(0xd1d1d1),
     }
 }
 
@@ -193,11 +253,17 @@ uniform float uProgress;
 
 varying float vNoise;
 
+attribute vec3 aCurrentPos;
+
 void main() {
     vec3 pos = position;
 
     float noise = cnoise(pos * uFreq) * uAmp;
     vNoise =noise;
+
+    if( vNoise > uProgress && vNoise < uProgress + uEdge){
+        pos = aCurrentPos;
+    }
 
     vec4 modelPosition = modelMatrix * vec4(pos, 1.0);
     vec4 viewPosition = viewMatrix * modelPosition;
@@ -254,6 +320,7 @@ let tweaks = {
     particleVisible: true,
     particleBaseSize: particlesUniformData.uBaseSize.value,
     particleColor: "#" + particlesUniformData.uColor.value.getHexString(),
+    particleSpeedFactor: particleSpeedFactor,
 };
 
 
@@ -276,11 +343,16 @@ const particleFolder = pane.addFolder({ title: "Particle" });
 particleFolder.addBinding(tweaks, "particleVisible", { label: "Visible" }).on('change', (obj) => { particleMesh.visible = obj.value; });
 particleFolder.addBinding(tweaks, "particleBaseSize", { min: 10.0, max: 100, step: 0.01, label: "Base size" }).on('change', (obj) => { particlesUniformData.uBaseSize.value = obj.value; });
 particleFolder.addBinding(tweaks, "particleColor", { label: "Color" }).on('change', (obj) => { particlesUniformData.uColor.value.set(obj.value); });
+particleFolder.addBinding(tweaks, "particleSpeedFactor", { min: 0.02, max: 0.1, step: 0.001, label: "Speed" }).on('change', (obj) => { particleSpeedFactor = obj.value });
 
 
 function animate() {
     stat.update();
     orbCtrls.update();
+
+
+    updateParticleAttriutes();
+
 
     if (resizeRendererToDisplaySize()) {
         const canvas = re.domElement;
