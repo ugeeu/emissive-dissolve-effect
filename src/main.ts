@@ -160,14 +160,17 @@ scene.add(mesh);
 
 let particleMesh: THREE.Points;
 let particleMat = new THREE.ShaderMaterial();
-
 let particleCount = meshGeo.attributes.position.count;
 let particleMaxOffsetArr: Float32Array; // -- how far a particle can go from its initial position 
 let particleInitPosArr: Float32Array; // store the initial position of the particles -- particle position will reset here if it exceed maxoffset
 let particleCurrPosArr: Float32Array; // use to update he position of the particle 
 let particleVelocityArr: Float32Array; // velocity of each particle
+let particleData = {
+    particleSpeedFactor: 0.02, // for tweaking velocity 
+    velocityFactor: { x: 1, y: 1 },
+    waveAmplitude: 0,
+}
 
-let particleSpeedFactor = 0.02; // for tweaking velocity 
 
 function initParticleAttributes() {
     particleMaxOffsetArr = new Float32Array(particleCount);
@@ -180,11 +183,11 @@ function initParticleAttributes() {
         let y = i * 3 + 1;
         let z = i * 3 + 2;
 
-        particleMaxOffsetArr[i] = Math.random() * 1.5 + 0.2;
+        particleMaxOffsetArr[i] = Math.random() * 3.5 + 0.5;
 
-        particleVelocityArr[x] = 0;
-        particleVelocityArr[y] = Math.random() + 0.01;
-        particleVelocityArr[z] = 0;
+        particleVelocityArr[x] = Math.random() * 0.5 + 0.5;
+        particleVelocityArr[y] = Math.random() * 0.5 + 0.5;
+        particleVelocityArr[z] = Math.random() * 0.1;
     }
 
     meshGeo.setAttribute('aOffset', new THREE.BufferAttribute(particleMaxOffsetArr, 1));
@@ -192,15 +195,67 @@ function initParticleAttributes() {
     meshGeo.setAttribute('aVelocity', new THREE.BufferAttribute(particleVelocityArr, 3));
 }
 
+
+function calculateWaveOffset(idx: number) {
+
+    const posx = particleCurrPosArr[idx * 3 + 0];
+    const posy = particleCurrPosArr[idx * 3 + 1];
+
+    let xwave1 = Math.sin(posy * 2) * (0.8 + particleData.waveAmplitude);
+    let ywave1 = Math.sin(posx * 2) * (0.6 + particleData.waveAmplitude);
+
+    let xwave2 = Math.sin(posy * 5) * (0.2 + particleData.waveAmplitude);
+    let ywave2 = Math.sin(posx * 1) * (0.9 + particleData.waveAmplitude);
+
+
+    let xwave3 = Math.sin(posy * 8) * (0.8 + particleData.waveAmplitude);
+    let ywave3 = Math.sin(posx * 5) * (0.6 + particleData.waveAmplitude);
+
+
+    let xwave4 = Math.sin(posy * 3) * (0.8 + particleData.waveAmplitude);
+    let ywave4 = Math.sin(posx * 7) * (0.6 + particleData.waveAmplitude);
+
+    let xwave = xwave1 + xwave2 + xwave3 + xwave4;
+    let ywave = ywave1 + ywave2 + ywave3 + ywave4;
+
+    return { xwave, ywave }
+}
+
+
+function updateVelocity(idx: number) {
+
+    let vx = particleVelocityArr[idx * 3 + 0];
+    let vy = particleVelocityArr[idx * 3 + 1];
+    let vz = particleVelocityArr[idx * 3 + 2];
+
+    vx *= particleData.velocityFactor.x;
+    vy *= particleData.velocityFactor.y;
+
+    let { xwave, ywave } = calculateWaveOffset(idx);
+
+    vx += xwave;
+    vy += ywave;
+
+
+    vx *= Math.abs(particleData.particleSpeedFactor);
+    vy *= Math.abs(particleData.particleSpeedFactor);
+    vz *= Math.abs(particleData.particleSpeedFactor);
+
+    return { vx, vy, vz }
+}
+
+
 function updateParticleAttriutes() {
     for (let i = 0; i < particleCount; i++) {
         let x = i * 3 + 0;
         let y = i * 3 + 1;
         let z = i * 3 + 2;
 
-        particleCurrPosArr[x] += particleVelocityArr[x] * particleSpeedFactor;
-        particleCurrPosArr[y] += particleVelocityArr[y] * particleSpeedFactor;
-        particleCurrPosArr[z] += particleVelocityArr[z] * particleSpeedFactor;
+        let { vx, vy, vz } = updateVelocity(i);
+
+        particleCurrPosArr[x] += vx;
+        particleCurrPosArr[y] += vy;
+        particleCurrPosArr[z] += vz;
 
         const vec1 = new THREE.Vector3(particleInitPosArr[x], particleInitPosArr[y], particleInitPosArr[z]);
         const vec2 = new THREE.Vector3(particleCurrPosArr[x], particleCurrPosArr[y], particleCurrPosArr[z]);
@@ -211,13 +266,13 @@ function updateParticleAttriutes() {
             particleCurrPosArr[y] = particleInitPosArr[y];
             particleCurrPosArr[z] = particleInitPosArr[z];
         }
-
     }
 
     meshGeo.setAttribute('aOffset', new THREE.BufferAttribute(particleMaxOffsetArr, 1));
     meshGeo.setAttribute('aCurrentPos', new THREE.BufferAttribute(particleCurrPosArr, 3));
     meshGeo.setAttribute('aVelocity', new THREE.BufferAttribute(particleVelocityArr, 3));
 }
+
 
 initParticleAttributes();
 
@@ -320,7 +375,9 @@ let tweaks = {
     particleVisible: true,
     particleBaseSize: particlesUniformData.uBaseSize.value,
     particleColor: "#" + particlesUniformData.uColor.value.getHexString(),
-    particleSpeedFactor: particleSpeedFactor,
+    particleSpeedFactor: particleData.particleSpeedFactor,
+    velocityFactor: particleData.velocityFactor,
+    waveAmplitude: particleData.waveAmplitude,
 };
 
 
@@ -343,7 +400,9 @@ const particleFolder = pane.addFolder({ title: "Particle" });
 particleFolder.addBinding(tweaks, "particleVisible", { label: "Visible" }).on('change', (obj) => { particleMesh.visible = obj.value; });
 particleFolder.addBinding(tweaks, "particleBaseSize", { min: 10.0, max: 100, step: 0.01, label: "Base size" }).on('change', (obj) => { particlesUniformData.uBaseSize.value = obj.value; });
 particleFolder.addBinding(tweaks, "particleColor", { label: "Color" }).on('change', (obj) => { particlesUniformData.uColor.value.set(obj.value); });
-particleFolder.addBinding(tweaks, "particleSpeedFactor", { min: 0.02, max: 0.1, step: 0.001, label: "Speed" }).on('change', (obj) => { particleSpeedFactor = obj.value });
+particleFolder.addBinding(tweaks, "particleSpeedFactor", { min: 0.001, max: 0.1, step: 0.001, label: "Speed" }).on('change', (obj) => { particleData.particleSpeedFactor = obj.value });
+particleFolder.addBinding(tweaks, "waveAmplitude", { min: 0, max: 5, step: 0.01, label: "Wave Amp" }).on('change', (obj) => { particleData.waveAmplitude = obj.value; });
+particleFolder.addBinding(tweaks, "velocityFactor", { expanded: true, picker: 'inline', label: "Velocity Factor" }).on('change', (obj) => { particleData.velocityFactor = obj.value });
 
 
 function animate() {
