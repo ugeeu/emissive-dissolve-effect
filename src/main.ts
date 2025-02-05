@@ -1,6 +1,6 @@
 import './style.css'
 import * as THREE from 'three';
-import Stats from 'three/examples/jsm/libs/stats.module.js';
+//import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { Pane } from 'tweakpane';
 
 
@@ -90,9 +90,9 @@ effectComposer2.addPass(shaderPass);
 effectComposer2.addPass(outPass);
 
 
-const stat = new Stats();
+//const stat = new Stats();
 const orbCtrls = new OrbitControls(cam, cnvs);
-document.body.appendChild(stat.dom);
+//document.body.appendChild(stat.dom);
 
 
 const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256);
@@ -124,6 +124,7 @@ async function loadTextures() {
 
     cubeCamera.update(re, scene);
 
+    document.body.classList.remove("loading");
     //lightProbe = await LightProbeGenerator.fromCubeRenderTarget(re, cubeRenderTarget);
     //scene.add(lightProbe);
 
@@ -609,7 +610,7 @@ function floatMeshes(time: number) {
 
 const clock = new THREE.Clock();
 function animate() {
-    stat.update();
+    //   stat.update();
     orbCtrls.update();
 
     let time = clock.getElapsedTime();
