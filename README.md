@@ -4,9 +4,9 @@
 
 ![Screenshot from 2025-02-05 05-44-32](https://github.com/user-attachments/assets/2fc5f0e7-4125-42ed-9104-280cc12101e0)
 
-[Article on Codrops](https://tympanus.net/codrops/?p=)
+[Article on Codrops](https://tympanus.net/codrops/2025/02/17/implementing-a-dissolve-effect-with-shaders-and-particles-in-three-js/)
 
-[Demo](https://tympanus.net/Development/.../)
+[Demo](https://tympanus.net/Tutorials/EmissiveDissolveEffect/)
 
 ## Installation
 ```
